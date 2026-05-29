@@ -1,0 +1,11 @@
+{application, bunko, [
+    {description,
+        "Agent memory and semantic retrieval for the BEAM - pgvector-backed store, embeddings, and consolidation"},
+    {vsn, "git"},
+    {registered, []},
+    {applications, [kernel, stdlib, crypto, kura]},
+    {env, [{embedding_dim, 1536}]},
+    {modules, []},
+    {licenses, ["MIT"]},
+    {links, [{"GitHub", "https://github.com/Taure/bunko"}]}
+]}.

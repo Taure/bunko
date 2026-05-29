@@ -1,0 +1,12 @@
+{"1.2.0",
+[{<<"kura">>,
+  {git,"https://github.com/Taure/kura.git",
+       {ref,"9035dbdb08d46427780bd831d577af40d91369e3"}},
+  0},
+ {<<"telemetry">>,{pkg,<<"telemetry">>,<<"1.4.2">>},1}]}.
+[
+{pkg_hash,[
+ {<<"telemetry">>, <<"A0CB522801DFFB1C49FE6E30561BADFFC7B6D0E180DB1300DF759FAA22062855">>}]},
+{pkg_hash_ext,[
+ {<<"telemetry">>, <<"928F6495066506077862C0D1646609EED891A4326BEE3126BA54B60AF61FEBB1">>}]}
+].
