@@ -2,6 +2,7 @@
 
 -export([all/0, init_per_suite/1]).
 -export([
+    install_is_idempotent/1,
     remember_and_recall/1,
     recall_respects_limit/1,
     recall_clamps_bad_limit/1,
@@ -13,6 +14,7 @@
 
 all() ->
     [
+        install_is_idempotent,
         remember_and_recall,
         recall_respects_limit,
         recall_clamps_bad_limit,
@@ -24,36 +26,20 @@ init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(kura),
     {ok, _} = application:ensure_all_started(kura_postgres),
     ok = bunko_test_repo:start(),
-    %% kura_migrator:migrate/1 discovers migrations via the repo module's
-    %% owning app, but a test-module repo belongs to no app - so apply bunko's
-    %% migrations directly (compile_operation + kura_db:query, as the migrator
-    %% does internally).
+    %% Provision the schema through the public install/1 helper (dogfooding it).
+    %% The container's tmpfs survives between local runs, so drop first for a
+    %% clean slate, then install (which is itself idempotent).
     try
-        apply_migrations(bunko_test_repo),
+        ok = bunko_store_pgvector:uninstall(#{repo => bunko_test_repo}),
+        ok = bunko_store_pgvector:install(#{repo => bunko_test_repo}),
         Config
     catch
         Class:Reason -> {skip, {bunko_db_setup, Class, Reason}}
     end.
 
-apply_migrations(Repo) ->
-    _ = application:load(bunko),
-    %% Clean slate: the container's tmpfs survives between local runs, so drop
-    %% the table first (the kura-generated CREATE TABLE is not idempotent).
-    _ = kura_db:query(Repo, ~"DROP TABLE IF EXISTS bunko_memories CASCADE", []),
-    {ok, Modules} = application:get_key(bunko, modules),
-    Migrations = lists:sort([M || M <- Modules, is_migration(M)]),
-    _ = [exec_op(Repo, Op) || M <- Migrations, Op <- M:up()],
-    ok.
-
-is_migration(Module) ->
-    re:run(atom_to_list(Module), "^m[0-9]{14}_") =/= nomatch.
-
-exec_op(Repo, Op) ->
-    SQL = kura_migrator:compile_operation(Repo, Op),
-    case kura_db:query(Repo, SQL, []) of
-        {error, Reason} -> error({migration_op_failed, Op, Reason});
-        _ -> ok
-    end.
+install_is_idempotent(_Config) ->
+    %% init_per_suite already installed; a second call must not error.
+    ?assertEqual(ok, bunko_store_pgvector:install(#{repo => bunko_test_repo})).
 
 remember_and_recall(_Config) ->
     Ctx = ctx(~"ns-recall"),
