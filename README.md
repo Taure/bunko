@@ -46,10 +46,24 @@ summarizer have deterministic stubs (`bunko_embedder_stub`,
 `bunko_summarizer_stub`); real ones are the caller's (wrap gakudan_llm, sekisho,
 or a vendor SDK).
 
+## Schema setup
+
+kura discovers migrations through the consuming app, so a consumer's repo cannot
+auto-apply bunko's migrations. Provision the schema with `install/1` (idempotent;
+safe to call on every boot) after setting the embedding dimension:
+
+```erlang
+application:set_env(bunko, embedding_dim, 1536),
+ok = bunko_store_pgvector:install(#{repo => myapp_repo}).
+```
+
+This creates the `vector` extension, the `bunko_memories` table, and the cosine
+(HNSW) index in your repo.
+
 ## Status
 
-v0.1 in development. The embedding dimension is configured via
-`{bunko, [{embedding_dim, N}]}` (read by the migration and matched by the stub).
+v0.1. The embedding dimension is configured via `{bunko, [{embedding_dim, N}]}`
+(used by `install/1` and matched by the stub).
 
 Deferred: hybrid keyword+vector search, reranking, automatic extraction from
 transcripts, alternative stores.
