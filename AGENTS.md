@@ -13,12 +13,16 @@ https://github.com/Taure):
 - **[saiten](https://github.com/Taure/saiten)** - runtime-agnostic eval/scoring
   + CI gate.
 - **[madoguchi](https://github.com/Taure/madoguchi)** - MCP *server* framework.
-- **[sekisho](https://github.com/Taure/sekisho)** - LLM gateway / control plane.
+- **[sekisho](https://github.com/Taure/sekisho)** - LLM gateway / control plane:
+  virtual keys, budgets, and audit in front of Anthropic + OpenAI (chat and
+  embeddings) + Vertex.
 - **bunko** - agent memory + RAG: a pgvector-backed store, an embedder seam, and
   memory consolidation.
+- **[banto](https://github.com/Taure/banto)** - multi-agent repo concierge; the
+  showcase consumer that wires the pillars together.
 
 Other gakudan sisters: gakudan_metrics, gakudan_otel, gakudan_tickets
-(+ gakudan_tickets_github), gakudan_liveboard.
+(+ gakudan_tickets_github), gakudan_liveboard (Nova + Datastar dashboard).
 
 **This repo** is the memory layer. Runtime-agnostic on purpose (like saiten): any
 BEAM app uses it. The gakudan integration (recall as a tool / auto-injected
