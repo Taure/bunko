@@ -152,11 +152,27 @@ parse_vector(_) ->
 to_float(F) when is_float(F) -> F;
 to_float(I) when is_integer(I) -> float(I);
 to_float(B) when is_binary(B) ->
-    try
-        binary_to_float(B)
-    catch
-        _:_ -> float(binary_to_integer(B))
+    %% pgvector serialises small float4 values in scientific notation
+    %% (e.g. ~"-2e-06"), which binary_to_float/binary_to_integer both reject.
+    case binary:split(B, [~"e", ~"E"]) of
+        [Mantissa, Exp] -> mantissa_to_float(Mantissa) * math:pow(10, exp_to_int(Exp));
+        [Mantissa] -> mantissa_to_float(Mantissa)
     end.
+
+mantissa_to_float(M) ->
+    try
+        binary_to_float(M)
+    catch
+        _:_ ->
+            try
+                float(binary_to_integer(M))
+            catch
+                _:_ -> binary_to_float(<<M/binary, ".0">>)
+            end
+    end.
+
+exp_to_int(<<"+", E/binary>>) -> binary_to_integer(E);
+exp_to_int(E) -> binary_to_integer(E).
 
 meta_json(undefined) -> ~"null";
 meta_json(Map) -> iolist_to_binary(json:encode(Map)).
