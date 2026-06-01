@@ -55,15 +55,26 @@ Options (all optional):
 - `filter` - a metadata map; only memories whose `metadata` jsonb contains it
   (SQL `@>`) are considered.
 - `max_distance` - drop hits whose cosine distance exceeds this threshold.
+- `rerank => recency` - rerank the returned hits by recency + importance +
+  similarity (see `m:bunko_score`); pass weights under `rerank_weights`.
 """.
 -spec recall(context(), binary(), map()) -> {ok, [bunko_store:hit()]} | {error, term()}.
 recall(Ctx, Query, Opts) ->
     case bunko_embedder:embed(embedder(Ctx), Query) of
         {ok, Vector} ->
             QueryOpts = maps:with([filter, max_distance], Opts),
-            bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts);
+            case bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts) of
+                {ok, Hits} -> {ok, maybe_rerank(Opts, Hits)};
+                {error, _} = Err -> Err
+            end;
         {error, _} = Err ->
             Err
+    end.
+
+maybe_rerank(Opts, Hits) ->
+    case maps:get(rerank, Opts, undefined) of
+        recency -> bunko_score:rerank(Hits, maps:get(rerank_weights, Opts, #{}));
+        _ -> Hits
     end.
 
 limit(Opts) ->

@@ -26,7 +26,7 @@ keeps store configuration (the repo) separate from per-call retrieval tuning.
     content := binary(),
     metadata := map(),
     distance := float(),
-    inserted_at => term(),
+    age_seconds => float(),
     score => float()
 }.
 -type query() :: #{

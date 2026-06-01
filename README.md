@@ -36,6 +36,12 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
     max_distance => 0.35
 }),
 
+%% Rerank by recency + importance + similarity (no model needed).
+{ok, Ranked} = bunko:recall(Ctx, ~"what units should I use?", #{
+    rerank => recency,
+    rerank_weights => #{alpha => 0.3, beta => 0.2, gamma => 0.5}
+}),
+
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
 ```

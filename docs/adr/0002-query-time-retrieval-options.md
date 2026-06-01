@@ -48,8 +48,9 @@ config.
 and threads it through. Both are optional; omitting them reproduces the old
 top-k behaviour exactly.
 
-Hits now also carry `inserted_at` when the store provides it, so later stages
-(recency scoring) need no extra round-trip.
+Hits now also carry `age_seconds` (computed in SQL as
+`extract(epoch from now() - inserted_at)`) when the store provides it, so later
+stages (recency scoring) need no extra round-trip or timestamp parsing.
 
 The vector literal stays inlined (pgo cannot bind a `vector` parameter; the
 floats are code-generated). Everything else - the filter JSON, namespace, limit

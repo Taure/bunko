@@ -8,6 +8,7 @@
     recall_clamps_bad_limit/1,
     recall_filters_by_metadata/1,
     recall_drops_past_max_distance/1,
+    recall_reranks_by_recency/1,
     consolidate_merges_similar/1
 ]).
 
@@ -22,6 +23,7 @@ all() ->
         recall_clamps_bad_limit,
         recall_filters_by_metadata,
         recall_drops_past_max_distance,
+        recall_reranks_by_recency,
         consolidate_merges_similar
     ].
 
@@ -95,6 +97,16 @@ recall_drops_past_max_distance(_Config) ->
     {ok, NoneNear} = bunko:recall(Ctx, ~"totally unrelated query string", #{max_distance => 0.0001}),
     ?assertEqual(1, length(Exact)),
     ?assertEqual(0, length(NoneNear)).
+
+recall_reranks_by_recency(_Config) ->
+    Ctx = ctx(~"ns-rerank"),
+    {ok, _} = bunko:remember(Ctx, ~"low priority note", #{~"importance" => 0.0}),
+    {ok, _} = bunko:remember(Ctx, ~"high priority note", #{~"importance" => 1.0}),
+    Weights = #{alpha => 0.0, beta => 1.0, gamma => 0.0},
+    {ok, Hits} = bunko:recall(Ctx, ~"note", #{rerank => recency, rerank_weights => Weights}),
+    [Top | _] = Hits,
+    ?assertEqual(~"high priority note", maps:get(content, Top)),
+    ?assert(maps:is_key(score, Top)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

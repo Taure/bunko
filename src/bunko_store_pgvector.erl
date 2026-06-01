@@ -52,7 +52,7 @@ search(NS, Vec, K, Query, #{repo := Repo}) ->
     {FilterClause, FilterParams} = filter_clause(Query, 3),
     DistClause = distance_clause(Query, Distance),
     SQL = iolist_to_binary([
-        ~"SELECT id, content, metadata, inserted_at, ",
+        ~"SELECT id, content, metadata, extract(epoch from now() - inserted_at) AS age_seconds, ",
         Distance,
         ~" AS distance FROM bunko_memories WHERE namespace = $1",
         FilterClause,
@@ -150,9 +150,9 @@ to_hit(#{id := Id, content := Content, metadata := Meta, distance := Distance} =
         metadata => decode_meta(Meta),
         distance => to_float(Distance)
     },
-    case maps:get(inserted_at, Row, undefined) of
+    case maps:get(age_seconds, Row, undefined) of
         undefined -> Base;
-        Ts -> Base#{inserted_at => Ts}
+        Age -> Base#{age_seconds => to_float(Age)}
     end.
 
 to_memory(#{id := Id, namespace := NS, content := Content, metadata := Meta, embedding := Emb}) ->
