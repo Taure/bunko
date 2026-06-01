@@ -46,12 +46,22 @@ remember(Ctx, Content, Metadata) ->
             Err
     end.
 
--doc "Recall the most relevant memories for `Query` (option `limit`, default 5).".
+-doc """
+Recall the most relevant memories for `Query`.
+
+Options (all optional):
+
+- `limit` - max hits to return (default 5).
+- `filter` - a metadata map; only memories whose `metadata` jsonb contains it
+  (SQL `@>`) are considered.
+- `max_distance` - drop hits whose cosine distance exceeds this threshold.
+""".
 -spec recall(context(), binary(), map()) -> {ok, [bunko_store:hit()]} | {error, term()}.
 recall(Ctx, Query, Opts) ->
     case bunko_embedder:embed(embedder(Ctx), Query) of
         {ok, Vector} ->
-            bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts));
+            QueryOpts = maps:with([filter, max_distance], Opts),
+            bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts);
         {error, _} = Err ->
             Err
     end.

@@ -22,11 +22,11 @@ The embedding column is `vector(N)` where `N` is `{bunko, embedding_dim}`
 """.
 -behaviour(bunko_store).
 
--export([put/2, search/4, delete/2, all/2]).
+-export([put/2, search/5, delete/2, all/2]).
 -export([install/1, uninstall/1]).
 
 -ifdef(TEST).
--export([parse_vector/1, vec_literal/1]).
+-export([parse_vector/1, vec_literal/1, filter_params/1]).
 -endif.
 
 -spec put(bunko_store:memory(), map()) -> {ok, binary()} | {error, term()}.
@@ -44,21 +44,45 @@ put(#{id := Id, namespace := NS, content := Content, embedding := Vec} = Mem, #{
         {error, _} = Err -> Err
     end.
 
--spec search(binary(), [float()], pos_integer(), map()) ->
+-spec search(binary(), [float()], pos_integer(), bunko_store:query(), map()) ->
     {ok, [bunko_store:hit()]} | {error, term()}.
-search(NS, Vec, K, #{repo := Repo}) ->
+search(NS, Vec, K, Query, #{repo := Repo}) ->
     Lit = vec_literal(Vec),
+    Distance = iolist_to_binary([~"(embedding <=> ", Lit, ~")"]),
+    {FilterClause, FilterParams} = filter_clause(Query, 3),
+    DistClause = distance_clause(Query, Distance),
     SQL = iolist_to_binary([
-        ~"SELECT id, content, metadata, (embedding <=> ",
-        Lit,
-        ~") AS distance FROM bunko_memories WHERE namespace = $1 ORDER BY embedding <=> ",
-        Lit,
+        ~"SELECT id, content, metadata, inserted_at, ",
+        Distance,
+        ~" AS distance FROM bunko_memories WHERE namespace = $1",
+        FilterClause,
+        DistClause,
+        ~" ORDER BY ",
+        Distance,
         ~" LIMIT $2"
     ]),
-    case Repo:query(SQL, [NS, K]) of
+    case Repo:query(SQL, [NS, K | FilterParams]) of
         {ok, Rows} -> {ok, [to_hit(R) || R <- Rows]};
         {error, _} = Err -> Err
     end.
+
+filter_clause(Query, Pos) ->
+    case filter_params(Query) of
+        [] ->
+            {~"", []};
+        Params ->
+            {iolist_to_binary([~" AND metadata @> $", integer_to_binary(Pos), ~"::jsonb"]), Params}
+    end.
+
+filter_params(#{filter := Filter}) when is_map(Filter), map_size(Filter) > 0 ->
+    [iolist_to_binary(json:encode(Filter))];
+filter_params(_) ->
+    [].
+
+distance_clause(#{max_distance := Max}, Distance) when is_number(Max) ->
+    iolist_to_binary([~" AND ", Distance, ~" <= ", float_to_binary(Max * 1.0, [{decimals, 8}])]);
+distance_clause(_, _) ->
+    ~"".
 
 -spec delete([binary()], map()) -> ok | {error, term()}.
 delete([], _Opts) ->
@@ -119,8 +143,17 @@ run_all(Repo, [SQL | Rest]) ->
 
 %% --- row mapping ---
 
-to_hit(#{id := Id, content := Content, metadata := Meta, distance := Distance}) ->
-    #{id => Id, content => Content, metadata => decode_meta(Meta), distance => to_float(Distance)}.
+to_hit(#{id := Id, content := Content, metadata := Meta, distance := Distance} = Row) ->
+    Base = #{
+        id => Id,
+        content => Content,
+        metadata => decode_meta(Meta),
+        distance => to_float(Distance)
+    },
+    case maps:get(inserted_at, Row, undefined) of
+        undefined -> Base;
+        Ts -> Base#{inserted_at => Ts}
+    end.
 
 to_memory(#{id := Id, namespace := NS, content := Content, metadata := Meta, embedding := Emb}) ->
     #{

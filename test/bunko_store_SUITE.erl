@@ -6,6 +6,8 @@
     remember_and_recall/1,
     recall_respects_limit/1,
     recall_clamps_bad_limit/1,
+    recall_filters_by_metadata/1,
+    recall_drops_past_max_distance/1,
     consolidate_merges_similar/1
 ]).
 
@@ -18,6 +20,8 @@ all() ->
         remember_and_recall,
         recall_respects_limit,
         recall_clamps_bad_limit,
+        recall_filters_by_metadata,
+        recall_drops_past_max_distance,
         consolidate_merges_similar
     ].
 
@@ -74,6 +78,23 @@ recall_clamps_bad_limit(_Config) ->
     {ok, Bad} = bunko:recall(Ctx, ~"3", #{limit => not_an_int}),
     ?assertEqual(5, length(Zero)),
     ?assertEqual(5, length(Bad)).
+
+recall_filters_by_metadata(_Config) ->
+    Ctx = ctx(~"ns-filter"),
+    {ok, _} = bunko:remember(Ctx, ~"kept fact", #{<<"kind">> => <<"keep">>}),
+    {ok, _} = bunko:remember(Ctx, ~"other fact", #{<<"kind">> => <<"skip">>}),
+    {ok, Hits} = bunko:recall(Ctx, ~"fact", #{filter => #{<<"kind">> => <<"keep">>}}),
+    ?assertEqual(1, length(Hits)),
+    [Hit] = Hits,
+    ?assertEqual(~"kept fact", maps:get(content, Hit)).
+
+recall_drops_past_max_distance(_Config) ->
+    Ctx = ctx(~"ns-maxdist"),
+    {ok, _} = bunko:remember(Ctx, ~"the only memory here", #{}),
+    {ok, Exact} = bunko:recall(Ctx, ~"the only memory here", #{max_distance => 0.0001}),
+    {ok, NoneNear} = bunko:recall(Ctx, ~"totally unrelated query string", #{max_distance => 0.0001}),
+    ?assertEqual(1, length(Exact)),
+    ?assertEqual(0, length(NoneNear)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

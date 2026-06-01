@@ -23,3 +23,11 @@ parse_vector_scientific_notation_test() ->
     ?assert(abs(V1 - -2.0e-6) < 1.0e-12),
     ?assert(abs(V2 - 1.5e-3) < 1.0e-12),
     ?assert(abs(V3 - 300.0) < 1.0e-9).
+
+filter_params_empty_test() ->
+    ?assertEqual([], bunko_store_pgvector:filter_params(#{})),
+    ?assertEqual([], bunko_store_pgvector:filter_params(#{filter => #{}})).
+
+filter_params_encodes_json_test() ->
+    [Json] = bunko_store_pgvector:filter_params(#{filter => #{<<"kind">> => <<"keep">>}}),
+    ?assertEqual(#{<<"kind">> => <<"keep">>}, json:decode(Json)).

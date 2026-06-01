@@ -29,6 +29,13 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 %% Recall the most relevant memories for a query (top-k cosine).
 {ok, Hits} = bunko:recall(Ctx, ~"what units should I use?", #{limit => 5}),
 
+%% Scope recall by metadata and reject semantically distant hits.
+{ok, Scoped} = bunko:recall(Ctx, ~"what units should I use?", #{
+    limit => 5,
+    filter => #{<<"source">> => <<"chat">>},
+    max_distance => 0.35
+}),
+
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
 ```
