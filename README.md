@@ -26,6 +26,14 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 %% Remember a fact.
 {ok, _Id} = bunko:remember(Ctx, ~"the user prefers metric units", #{source => chat}),
 
+%% Remember many in one batch embedding call (enable caching to skip
+%% re-embedding identical content).
+Cached = #{store => Store, embedder => {my_embedder, #{cache => true}}, namespace => ~"agent:42"},
+{ok, _Ids} = bunko:remember_many(Cached, [
+    {~"the user prefers metric units", #{source => chat}},
+    {~"the user is based in Stockholm", #{source => chat}}
+]),
+
 %% Recall the most relevant memories for a query (top-k cosine).
 {ok, Hits} = bunko:recall(Ctx, ~"what units should I use?", #{limit => 5}),
 
@@ -65,7 +73,7 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 | Behaviour | Role |
 | --- | --- |
 | `bunko_store` | persist a memory + namespaced top-k similarity search |
-| `bunko_embedder` | text -> embedding vector |
+| `bunko_embedder` | text -> embedding vector (optional batch `embed_many`) |
 | `bunko_summarizer` | merge several memories into one (consolidation) |
 | `bunko_reranker` | optional second-stage reordering of recall hits |
 
@@ -96,8 +104,9 @@ v0.1. The embedding dimension is configured via `{bunko, [{embedding_dim, N}]}`
 
 Recall supports metadata filtering, a distance threshold, recency/importance
 reranking, a pluggable reranker stage, and opt-in hybrid keyword+vector search
-(RRF). `forget/2` bounds memory lifetime by age and/or idle time. Deferred:
-automatic extraction from transcripts, alternative stores.
+(RRF). `forget/2` bounds memory lifetime by age and/or idle time. `remember_many/2`
+batches embedding, with an optional content-hash cache. Deferred: automatic
+extraction from transcripts, alternative stores.
 
 ## License
 

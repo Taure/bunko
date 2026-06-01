@@ -48,7 +48,7 @@ context) is a documented follow-up, not a dependency.
   `remember` / `recall` (namespaced top-k cosine, metadata filter, distance
   threshold, recency/importance reranking, optional hybrid keyword+vector RRF,
   optional reranker stage); `consolidate` (dedup + summarize similar memories);
-  `forget` (TTL + idle expiry).
+  `forget` (TTL + idle expiry); `remember_many` (batch + cached embedding).
 - **Out (deferred):** automatic memory extraction from transcripts, alternative
   stores (sqlite-vec), multi-tenancy beyond a namespace string.
 

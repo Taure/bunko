@@ -6,12 +6,22 @@ text always yields the same vector, so exact-match recall is deterministic.
 """.
 -behaviour(bunko_embedder).
 
--export([embed/2]).
+-export([embed/2, embed_many/2]).
 
 -spec embed(binary(), map()) -> {ok, [float()]}.
 embed(Text, Opts) ->
     Dim = maps:get(dim, Opts, application:get_env(bunko, embedding_dim, 1536)),
     {ok, [component(Text, I) || I <- lists:seq(1, Dim)]}.
+
+-spec embed_many([binary()], map()) -> {ok, [[float()]]}.
+embed_many(Texts, Opts) ->
+    {ok, [
+        begin
+            {ok, V} = embed(T, Opts),
+            V
+        end
+     || T <- Texts
+    ]}.
 
 %% Deterministic component in [-1.0, 1.0) from (text, dimension index).
 component(Text, I) ->

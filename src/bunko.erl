@@ -18,7 +18,7 @@ Ctx = #{
 cosine); `consolidate` merges near-duplicate memories via the summarizer.
 """.
 
--export([remember/3, recall/3, consolidate/2, forget/2]).
+-export([remember/3, remember_many/2, recall/3, consolidate/2, forget/2]).
 
 -export_type([context/0]).
 
@@ -44,6 +44,41 @@ remember(Ctx, Content, Metadata) ->
             bunko_store:put(store(Ctx), Memory);
         {error, _} = Err ->
             Err
+    end.
+
+-doc """
+Embed and store several memories in one batch embedding call.
+
+`Items` is a list of `{Content, Metadata}`. Uses the embedder's `embed_many/2`
+(falling back to per-item `embed/2`), so a batch is a single embedding request,
+and the content-hash cache (`cache => true` on the embedder ref) skips identical
+content. Returns the new ids in input order. Stores are still per-item and
+best-effort: a store error aborts and returns it, leaving earlier items written.
+""".
+-spec remember_many(context(), [{binary(), map()}]) ->
+    {ok, [binary()]} | {error, term()}.
+remember_many(Ctx, Items) ->
+    Contents = [C || {C, _M} <- Items],
+    case bunko_embedder:embed_many(embedder(Ctx), Contents) of
+        {ok, Vectors} ->
+            store_many(Ctx, lists:zip(Items, Vectors), []);
+        {error, _} = Err ->
+            Err
+    end.
+
+store_many(_Ctx, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+store_many(Ctx, [{{Content, Metadata}, Vector} | Rest], Acc) ->
+    Memory = #{
+        id => new_id(),
+        namespace => namespace(Ctx),
+        content => Content,
+        embedding => Vector,
+        metadata => Metadata
+    },
+    case bunko_store:put(store(Ctx), Memory) of
+        {ok, Id} -> store_many(Ctx, Rest, [Id | Acc]);
+        {error, _} = Err -> Err
     end.
 
 -doc """

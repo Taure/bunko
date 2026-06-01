@@ -13,6 +13,7 @@
     recall_applies_reranker/1,
     forget_expires_by_age/1,
     forget_respects_idle_and_touch/1,
+    remember_many_batches/1,
     consolidate_merges_similar/1
 ]).
 
@@ -32,6 +33,7 @@ all() ->
         recall_applies_reranker,
         forget_expires_by_age,
         forget_respects_idle_and_touch,
+        remember_many_batches,
         consolidate_merges_similar
     ].
 
@@ -159,6 +161,17 @@ forget_respects_idle_and_touch(_Config) ->
     ?assertEqual(1, length(All)),
     [Survivor] = All,
     ?assertEqual(~"fresh memory text", maps:get(content, Survivor)).
+
+remember_many_batches(_Config) ->
+    Ctx = ctx(~"ns-batch"),
+    Items = [{~"first fact", #{}}, {~"second fact", #{}}, {~"third fact", #{}}],
+    {ok, Ids} = bunko:remember_many(Ctx, Items),
+    ?assertEqual(3, length(Ids)),
+    {ok, All} = bunko_store:all(store(), ~"ns-batch"),
+    ?assertEqual(3, length(All)),
+    {ok, Hits} = bunko:recall(Ctx, ~"second fact", #{limit => 1}),
+    [Top | _] = Hits,
+    ?assertEqual(~"second fact", maps:get(content, Top)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),
