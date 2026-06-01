@@ -12,13 +12,13 @@ memories so they don't grow unbounded. It is runtime-agnostic - any BEAM app
 uses it, not just [gakudan](https://github.com/Taure/gakudan).
 
 The store is pgvector-backed (via [kura](https://github.com/Taure/kura)). It
-ships no embedding or LLM client: you plug in an `bunko_embedder` and (for
+ships no embedding or LLM client: you plug in a `bunko_embedder` and (for
 consolidation) a `bunko_summarizer`, with deterministic stubs for offline tests.
 
 ## How it works
 
 ```erlang
-%% Configure a store (a kura repo + namespace) and an embedder.
+%% Configure a store (a kura repo), an embedder, and a namespace.
 Store = {bunko_store_pgvector, #{repo => myapp_repo}},
 Embedder = {my_embedder, #{model => ~"text-embedding-3-small"}},
 Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
