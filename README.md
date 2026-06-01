@@ -42,6 +42,9 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
     rerank_weights => #{alpha => 0.3, beta => 0.2, gamma => 0.5}
 }),
 
+%% Hybrid: fuse a keyword (tsvector) lane with the vector lane via RRF.
+{ok, Fused} = bunko:recall(Ctx, ~"metric units error E42", #{hybrid => true}),
+
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
 ```
@@ -78,8 +81,9 @@ This creates the `vector` extension, the `bunko_memories` table, and the cosine
 v0.1. The embedding dimension is configured via `{bunko, [{embedding_dim, N}]}`
 (used by `install/1` and matched by the stub).
 
-Deferred: hybrid keyword+vector search, reranking, automatic extraction from
-transcripts, alternative stores.
+Recall supports metadata filtering, a distance threshold, recency/importance
+reranking, and opt-in hybrid keyword+vector search (RRF). Deferred: automatic
+extraction from transcripts, alternative stores.
 
 ## License
 

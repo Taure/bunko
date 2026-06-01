@@ -9,6 +9,7 @@
     recall_filters_by_metadata/1,
     recall_drops_past_max_distance/1,
     recall_reranks_by_recency/1,
+    recall_hybrid_finds_keyword_match/1,
     consolidate_merges_similar/1
 ]).
 
@@ -24,6 +25,7 @@ all() ->
         recall_filters_by_metadata,
         recall_drops_past_max_distance,
         recall_reranks_by_recency,
+        recall_hybrid_finds_keyword_match,
         consolidate_merges_similar
     ].
 
@@ -107,6 +109,17 @@ recall_reranks_by_recency(_Config) ->
     [Top | _] = Hits,
     ?assertEqual(~"high priority note", maps:get(content, Top)),
     ?assert(maps:is_key(score, Top)).
+
+recall_hybrid_finds_keyword_match(_Config) ->
+    Ctx = ctx(~"ns-hybrid"),
+    {ok, _} = bunko:remember(Ctx, ~"the quick brown fox jumps", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"lorem ipsum dolor sit amet", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"completely different content here", #{}),
+    {ok, Hits} = bunko:recall(Ctx, ~"brown fox", #{hybrid => true, limit => 3}),
+    Contents = [maps:get(content, H) || H <- Hits],
+    ?assert(lists:member(~"the quick brown fox jumps", Contents)),
+    [Top | _] = Hits,
+    ?assertEqual(~"the quick brown fox jumps", maps:get(content, Top)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

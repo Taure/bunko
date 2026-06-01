@@ -42,12 +42,13 @@ context) is a documented follow-up, not a dependency.
 
 ## Scope - what belongs here
 
-- **In (v0.1):** the three behaviours + stubs; the pgvector store adapter;
-  `remember` / `recall` (namespaced top-k cosine); `consolidate` (dedup +
-  summarize similar memories).
-- **Out (deferred):** hybrid keyword+vector search, reranking, automatic memory
-  extraction from transcripts, alternative stores (sqlite-vec), multi-tenancy
-  beyond a namespace string.
+- **In:** the behaviours + stubs (`bunko_store`, `bunko_embedder`,
+  `bunko_summarizer`); the pgvector store adapter; `remember` / `recall`
+  (namespaced top-k cosine, metadata filter, distance threshold,
+  recency/importance reranking, optional hybrid keyword+vector RRF);
+  `consolidate` (dedup + summarize similar memories).
+- **Out (deferred):** automatic memory extraction from transcripts, alternative
+  stores (sqlite-vec), multi-tenancy beyond a namespace string.
 
 ## Commands
 

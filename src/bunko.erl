@@ -55,6 +55,9 @@ Options (all optional):
 - `filter` - a metadata map; only memories whose `metadata` jsonb contains it
   (SQL `@>`) are considered.
 - `max_distance` - drop hits whose cosine distance exceeds this threshold.
+- `hybrid => true` - fuse a keyword (tsvector) lane with the cosine lane via
+  Reciprocal Rank Fusion (see `m:bunko_store_pgvector`); tune with `rrf_k` /
+  `rrf_pool`.
 - `rerank => recency` - rerank the returned hits by recency + importance +
   similarity (see `m:bunko_score`); pass weights under `rerank_weights`.
 """.
@@ -62,13 +65,20 @@ Options (all optional):
 recall(Ctx, Query, Opts) ->
     case bunko_embedder:embed(embedder(Ctx), Query) of
         {ok, Vector} ->
-            QueryOpts = maps:with([filter, max_distance], Opts),
+            QueryOpts = query_opts(Query, Opts),
             case bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts) of
                 {ok, Hits} -> {ok, maybe_rerank(Opts, Hits)};
                 {error, _} = Err -> Err
             end;
         {error, _} = Err ->
             Err
+    end.
+
+query_opts(Query, Opts) ->
+    Base = maps:with([filter, max_distance, rrf_k, rrf_pool], Opts),
+    case maps:get(hybrid, Opts, false) of
+        true -> Base#{hybrid => true, text => Query};
+        _ -> Base
     end.
 
 maybe_rerank(Opts, Hits) ->

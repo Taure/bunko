@@ -33,7 +33,9 @@ keeps store configuration (the repo) separate from per-call retrieval tuning.
     filter => map(),
     max_distance => number(),
     hybrid => boolean(),
-    text => binary()
+    text => binary(),
+    rrf_k => pos_integer(),
+    rrf_pool => pos_integer()
 }.
 
 -callback put(memory(), Opts :: map()) -> {ok, binary()} | {error, term()}.
