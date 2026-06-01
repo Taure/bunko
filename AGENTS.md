@@ -31,7 +31,8 @@ context) is a documented follow-up, not a dependency.
 ## Design pillars
 
 - **Behaviours, not a framework.** `bunko_store` (persist + similarity search),
-  `bunko_embedder` (text -> vector), `bunko_summarizer` (merge memories).
+  `bunko_embedder` (text -> vector), `bunko_summarizer` (merge memories),
+  `bunko_reranker` (optional second-stage reordering).
 - **Bring-your-own client.** No embedding or LLM client ships in bunko - plug
   one in (wrap gakudan_llm / sekisho / a vendor SDK). A deterministic stub backs
   each behaviour so CI is offline and reproducible. Same earned-demand principle
@@ -43,10 +44,10 @@ context) is a documented follow-up, not a dependency.
 ## Scope - what belongs here
 
 - **In:** the behaviours + stubs (`bunko_store`, `bunko_embedder`,
-  `bunko_summarizer`); the pgvector store adapter; `remember` / `recall`
-  (namespaced top-k cosine, metadata filter, distance threshold,
-  recency/importance reranking, optional hybrid keyword+vector RRF);
-  `consolidate` (dedup + summarize similar memories).
+  `bunko_summarizer`, `bunko_reranker`); the pgvector store adapter;
+  `remember` / `recall` (namespaced top-k cosine, metadata filter, distance
+  threshold, recency/importance reranking, optional hybrid keyword+vector RRF,
+  optional reranker stage); `consolidate` (dedup + summarize similar memories).
 - **Out (deferred):** automatic memory extraction from transcripts, alternative
   stores (sqlite-vec), multi-tenancy beyond a namespace string.
 

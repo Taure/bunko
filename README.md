@@ -45,6 +45,12 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 %% Hybrid: fuse a keyword (tsvector) lane with the vector lane via RRF.
 {ok, Fused} = bunko:recall(Ctx, ~"metric units error E42", #{hybrid => true}),
 
+%% Plug in a custom reranker as an optional second stage.
+{ok, Reranked} = bunko:recall(Ctx, ~"what units?", #{
+    rerank => {my_reranker, #{}},
+    rerank_opts => #{}
+}),
+
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
 ```
@@ -56,11 +62,13 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 | `bunko_store` | persist a memory + namespaced top-k similarity search |
 | `bunko_embedder` | text -> embedding vector |
 | `bunko_summarizer` | merge several memories into one (consolidation) |
+| `bunko_reranker` | optional second-stage reordering of recall hits |
 
-The shipped store is `bunko_store_pgvector` (kura + pgvector). Embedder and
-summarizer have deterministic stubs (`bunko_embedder_stub`,
-`bunko_summarizer_stub`); real ones are the caller's (wrap gakudan_llm, sekisho,
-or a vendor SDK).
+The shipped store is `bunko_store_pgvector` (kura + pgvector). Embedder,
+summarizer, and reranker have deterministic stubs (`bunko_embedder_stub`,
+`bunko_summarizer_stub`, `bunko_reranker_stub`); real ones are the caller's
+(wrap gakudan_llm, sekisho, or a vendor SDK). `bunko_reranker_score` is a
+built-in reranker over the recency/importance scorer.
 
 ## Schema setup
 

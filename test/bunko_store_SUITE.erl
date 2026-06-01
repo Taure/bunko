@@ -10,6 +10,7 @@
     recall_drops_past_max_distance/1,
     recall_reranks_by_recency/1,
     recall_hybrid_finds_keyword_match/1,
+    recall_applies_reranker/1,
     consolidate_merges_similar/1
 ]).
 
@@ -26,6 +27,7 @@ all() ->
         recall_drops_past_max_distance,
         recall_reranks_by_recency,
         recall_hybrid_finds_keyword_match,
+        recall_applies_reranker,
         consolidate_merges_similar
     ].
 
@@ -120,6 +122,15 @@ recall_hybrid_finds_keyword_match(_Config) ->
     ?assert(lists:member(~"the quick brown fox jumps", Contents)),
     [Top | _] = Hits,
     ?assertEqual(~"the quick brown fox jumps", maps:get(content, Top)).
+
+recall_applies_reranker(_Config) ->
+    Ctx = ctx(~"ns-reranker"),
+    {ok, _} = bunko:remember(Ctx, ~"alpha beta gamma", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"unrelated text", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"delta epsilon", #{}),
+    {ok, Hits} = bunko:recall(Ctx, ~"alpha beta", #{limit => 3, rerank => bunko_reranker_stub}),
+    [Top | _] = Hits,
+    ?assertEqual(~"alpha beta gamma", maps:get(content, Top)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

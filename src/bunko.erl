@@ -58,8 +58,11 @@ Options (all optional):
 - `hybrid => true` - fuse a keyword (tsvector) lane with the cosine lane via
   Reciprocal Rank Fusion (see `m:bunko_store_pgvector`); tune with `rrf_k` /
   `rrf_pool`.
-- `rerank => recency` - rerank the returned hits by recency + importance +
-  similarity (see `m:bunko_score`); pass weights under `rerank_weights`.
+- `rerank` - an optional second reranking stage. `recency` is the built-in
+  recency + importance + similarity scorer (`m:bunko_reranker_score`); any
+  `m:bunko_reranker` reference (`Module` or `{Module, Opts}`) plugs in a custom
+  reranker. Per-call reranker options go under `rerank_opts` (the legacy
+  `rerank_weights` is still honoured for the recency scorer).
 """.
 -spec recall(context(), binary(), map()) -> {ok, [bunko_store:hit()]} | {error, term()}.
 recall(Ctx, Query, Opts) ->
@@ -67,7 +70,7 @@ recall(Ctx, Query, Opts) ->
         {ok, Vector} ->
             QueryOpts = query_opts(Query, Opts),
             case bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts) of
-                {ok, Hits} -> {ok, maybe_rerank(Opts, Hits)};
+                {ok, Hits} -> {ok, maybe_rerank(Opts, Query, Hits)};
                 {error, _} = Err -> Err
             end;
         {error, _} = Err ->
@@ -81,11 +84,22 @@ query_opts(Query, Opts) ->
         _ -> Base
     end.
 
-maybe_rerank(Opts, Hits) ->
+maybe_rerank(Opts, Query, Hits) ->
     case maps:get(rerank, Opts, undefined) of
-        recency -> bunko_score:rerank(Hits, maps:get(rerank_weights, Opts, #{}));
-        _ -> Hits
+        undefined ->
+            Hits;
+        Spec ->
+            {Ref, RerankOpts} = reranker(Spec, Opts),
+            case bunko_reranker:rerank(Ref, Query, Hits, RerankOpts) of
+                {ok, Reranked} -> Reranked;
+                {error, _} -> Hits
+            end
     end.
+
+reranker(recency, Opts) ->
+    {bunko_reranker_score, maps:get(rerank_opts, Opts, maps:get(rerank_weights, Opts, #{}))};
+reranker(Ref, Opts) ->
+    {Ref, maps:get(rerank_opts, Opts, #{})}.
 
 limit(Opts) ->
     case maps:get(limit, Opts, 5) of
