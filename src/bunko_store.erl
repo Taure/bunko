@@ -9,7 +9,7 @@ filter, a distance threshold) on top of the store's static config `Opts`. This
 keeps store configuration (the repo) separate from per-call retrieval tuning.
 """.
 
--export([put/2, search/5, delete/2, all/2, resolve/1]).
+-export([put/2, search/5, delete/2, all/2, expire/3, touch/2, resolve/1]).
 
 -export_type([ref/0, memory/0, hit/0, query/0]).
 
@@ -43,6 +43,11 @@ keeps store configuration (the repo) separate from per-call retrieval tuning.
     {ok, [hit()]} | {error, term()}.
 -callback delete([binary()], Opts :: map()) -> ok | {error, term()}.
 -callback all(binary(), Opts :: map()) -> {ok, [memory()]} | {error, term()}.
+-callback expire(binary(), Expiry :: map(), Opts :: map()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+-callback touch([binary()], Opts :: map()) -> ok | {error, term()}.
+
+-optional_callbacks([expire/3, touch/2]).
 
 -spec put(ref(), memory()) -> {ok, binary()} | {error, term()}.
 put(Ref, Memory) ->
@@ -64,6 +69,18 @@ delete(Ref, Ids) ->
 all(Ref, Namespace) ->
     {Mod, Opts} = resolve(Ref),
     Mod:all(Namespace, Opts).
+
+-spec expire(ref(), binary(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+expire(Ref, Namespace, Expiry) ->
+    {Mod, Opts} = resolve(Ref),
+    Mod:expire(Namespace, Expiry, Opts).
+
+-spec touch(ref(), [binary()]) -> ok | {error, term()}.
+touch(_Ref, []) ->
+    ok;
+touch(Ref, Ids) ->
+    {Mod, Opts} = resolve(Ref),
+    Mod:touch(Ids, Opts).
 
 -doc "Normalise a store reference to `{Module, Opts}`.".
 -spec resolve(ref()) -> {module(), map()}.

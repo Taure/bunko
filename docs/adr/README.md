@@ -22,3 +22,4 @@ a merged ADR - supersede it.
 | [0003](0003-recency-importance-scoring.md) | Recency and importance scoring |
 | [0004](0004-hybrid-search-rrf.md) | Hybrid keyword + vector search |
 | [0005](0005-reranker-seam.md) | Reranker seam |
+| [0006](0006-forgetting-decay-ttl.md) | Forgetting: TTL and idle expiry |

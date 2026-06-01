@@ -47,7 +47,8 @@ context) is a documented follow-up, not a dependency.
   `bunko_summarizer`, `bunko_reranker`); the pgvector store adapter;
   `remember` / `recall` (namespaced top-k cosine, metadata filter, distance
   threshold, recency/importance reranking, optional hybrid keyword+vector RRF,
-  optional reranker stage); `consolidate` (dedup + summarize similar memories).
+  optional reranker stage); `consolidate` (dedup + summarize similar memories);
+  `forget` (TTL + idle expiry).
 - **Out (deferred):** automatic memory extraction from transcripts, alternative
   stores (sqlite-vec), multi-tenancy beyond a namespace string.
 

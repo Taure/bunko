@@ -11,6 +11,8 @@
     recall_reranks_by_recency/1,
     recall_hybrid_finds_keyword_match/1,
     recall_applies_reranker/1,
+    forget_expires_by_age/1,
+    forget_respects_idle_and_touch/1,
     consolidate_merges_similar/1
 ]).
 
@@ -28,6 +30,8 @@ all() ->
         recall_reranks_by_recency,
         recall_hybrid_finds_keyword_match,
         recall_applies_reranker,
+        forget_expires_by_age,
+        forget_respects_idle_and_touch,
         consolidate_merges_similar
     ].
 
@@ -131,6 +135,30 @@ recall_applies_reranker(_Config) ->
     {ok, Hits} = bunko:recall(Ctx, ~"alpha beta", #{limit => 3, rerank => bunko_reranker_stub}),
     [Top | _] = Hits,
     ?assertEqual(~"alpha beta gamma", maps:get(content, Top)).
+
+forget_expires_by_age(_Config) ->
+    Ctx = ctx(~"ns-forget-age"),
+    {ok, _} = bunko:remember(Ctx, ~"ephemeral one", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"ephemeral two", #{}),
+    {ok, KeptNone} = bunko:forget(Ctx, #{max_age_seconds => 86400}),
+    ?assertEqual(0, KeptNone),
+    {ok, Removed} = bunko:forget(Ctx, #{max_age_seconds => 0}),
+    ?assertEqual(2, Removed),
+    {ok, All} = bunko_store:all(store(), ~"ns-forget-age"),
+    ?assertEqual(0, length(All)).
+
+forget_respects_idle_and_touch(_Config) ->
+    Ctx = ctx(~"ns-forget-idle"),
+    {ok, _} = bunko:remember(Ctx, ~"stale memory text", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"fresh memory text", #{}),
+    timer:sleep(1100),
+    {ok, _} = bunko:recall(Ctx, ~"fresh memory text", #{limit => 1, touch => true}),
+    {ok, Removed} = bunko:forget(Ctx, #{max_idle_seconds => 1}),
+    ?assertEqual(1, Removed),
+    {ok, All} = bunko_store:all(store(), ~"ns-forget-idle"),
+    ?assertEqual(1, length(All)),
+    [Survivor] = All,
+    ?assertEqual(~"fresh memory text", maps:get(content, Survivor)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

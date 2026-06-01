@@ -18,7 +18,7 @@ Ctx = #{
 cosine); `consolidate` merges near-duplicate memories via the summarizer.
 """.
 
--export([remember/3, recall/3, consolidate/2]).
+-export([remember/3, recall/3, consolidate/2, forget/2]).
 
 -export_type([context/0]).
 
@@ -63,6 +63,8 @@ Options (all optional):
   `m:bunko_reranker` reference (`Module` or `{Module, Opts}`) plugs in a custom
   reranker. Per-call reranker options go under `rerank_opts` (the legacy
   `rerank_weights` is still honoured for the recency scorer).
+- `touch => true` - stamp the returned hits' `last_accessed_at`, so idle-based
+  forgetting (`forget/2`) treats recalled memories as recently used.
 """.
 -spec recall(context(), binary(), map()) -> {ok, [bunko_store:hit()]} | {error, term()}.
 recall(Ctx, Query, Opts) ->
@@ -70,8 +72,12 @@ recall(Ctx, Query, Opts) ->
         {ok, Vector} ->
             QueryOpts = query_opts(Query, Opts),
             case bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts) of
-                {ok, Hits} -> {ok, maybe_rerank(Opts, Query, Hits)};
-                {error, _} = Err -> Err
+                {ok, Hits} ->
+                    Ranked = maybe_rerank(Opts, Query, Hits),
+                    _ = maybe_touch(Ctx, Opts, Ranked),
+                    {ok, Ranked};
+                {error, _} = Err ->
+                    Err
             end;
         {error, _} = Err ->
             Err
@@ -101,6 +107,12 @@ reranker(recency, Opts) ->
 reranker(Ref, Opts) ->
     {Ref, maps:get(rerank_opts, Opts, #{})}.
 
+maybe_touch(Ctx, Opts, Hits) ->
+    case maps:get(touch, Opts, false) of
+        true -> _ = bunko_store:touch(store(Ctx), [maps:get(id, H) || H <- Hits]);
+        _ -> ok
+    end.
+
 limit(Opts) ->
     case maps:get(limit, Opts, 5) of
         N when is_integer(N), N > 0 -> N;
@@ -127,6 +139,22 @@ consolidate(Ctx, Opts) ->
         {error, _} = Err ->
             Err
     end.
+
+-doc """
+Forget (delete) memories in the namespace that have expired. `Expiry` is a map:
+
+- `max_age_seconds` - delete memories older than this (by `inserted_at`).
+- `max_idle_seconds` - delete memories not accessed within this window (by
+  `last_accessed_at`, falling back to `inserted_at` when never touched; see the
+  `touch` option of `recall/3`).
+
+Either, both, or neither may be set (neither deletes nothing). Returns the count
+removed. Besides bounding unbounded growth, age-based expiry is a safety control:
+it caps how long a poisoned or stale memory can survive.
+""".
+-spec forget(context(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+forget(Ctx, Expiry) ->
+    bunko_store:expire(store(Ctx), namespace(Ctx), Expiry).
 
 %% --- consolidation ---
 

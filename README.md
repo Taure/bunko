@@ -51,6 +51,11 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
     rerank_opts => #{}
 }),
 
+%% Forget: bound memory lifetime (age and/or idle). Drive this from your own
+%% scheduler. Mark recalled memories as accessed with touch => true.
+{ok, _Hits2} = bunko:recall(Ctx, ~"what units?", #{touch => true}),
+{ok, _Removed} = bunko:forget(Ctx, #{max_age_seconds => 2592000, max_idle_seconds => 604800}).
+
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
 ```
@@ -90,8 +95,9 @@ v0.1. The embedding dimension is configured via `{bunko, [{embedding_dim, N}]}`
 (used by `install/1` and matched by the stub).
 
 Recall supports metadata filtering, a distance threshold, recency/importance
-reranking, and opt-in hybrid keyword+vector search (RRF). Deferred: automatic
-extraction from transcripts, alternative stores.
+reranking, a pluggable reranker stage, and opt-in hybrid keyword+vector search
+(RRF). `forget/2` bounds memory lifetime by age and/or idle time. Deferred:
+automatic extraction from transcripts, alternative stores.
 
 ## License
 

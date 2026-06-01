@@ -22,11 +22,11 @@ The embedding column is `vector(N)` where `N` is `{bunko, embedding_dim}`
 """.
 -behaviour(bunko_store).
 
--export([put/2, search/5, delete/2, all/2]).
+-export([put/2, search/5, delete/2, all/2, expire/3, touch/2]).
 -export([install/1, uninstall/1]).
 
 -ifdef(TEST).
--export([parse_vector/1, vec_literal/1, filter_params/1]).
+-export([parse_vector/1, vec_literal/1, filter_params/1, expire_clauses/1]).
 -endif.
 
 -spec put(bunko_store:memory(), map()) -> {ok, binary()} | {error, term()}.
@@ -153,6 +153,53 @@ delete(Ids, #{repo := Repo}) ->
         {error, _} = Err -> Err
     end.
 
+-spec expire(binary(), map(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+expire(NS, Expiry, #{repo := Repo}) ->
+    case expire_clauses(Expiry) of
+        [] ->
+            {ok, 0};
+        Clauses ->
+            Where = iolist_to_binary(lists:join(~" OR ", Clauses)),
+            SQL = iolist_to_binary([
+                ~"DELETE FROM bunko_memories WHERE namespace = $1 AND (",
+                Where,
+                ~") RETURNING id"
+            ]),
+            case Repo:query(SQL, [NS]) of
+                {ok, Rows} -> {ok, length(Rows)};
+                {error, _} = Err -> Err
+            end
+    end.
+
+expire_clauses(Expiry) ->
+    age_clause(Expiry) ++ idle_clause(Expiry).
+
+age_clause(#{max_age_seconds := S}) when is_number(S), S >= 0 ->
+    [iolist_to_binary([~"inserted_at < now() - interval '", secs(S), ~" seconds'"])];
+age_clause(_) ->
+    [].
+
+idle_clause(#{max_idle_seconds := S}) when is_number(S), S >= 0 ->
+    [
+        iolist_to_binary([
+            ~"coalesce(last_accessed_at, inserted_at) < now() - interval '", secs(S), ~" seconds'"
+        ])
+    ];
+idle_clause(_) ->
+    [].
+
+secs(S) -> float_to_binary(S * 1.0, [{decimals, 3}]).
+
+-spec touch([binary()], map()) -> ok | {error, term()}.
+touch([], _Opts) ->
+    ok;
+touch(Ids, #{repo := Repo}) ->
+    SQL = ~"UPDATE bunko_memories SET last_accessed_at = now() WHERE id = ANY($1::text[])",
+    case Repo:query(SQL, [Ids]) of
+        {ok, _} -> ok;
+        {error, _} = Err -> Err
+    end.
+
 -spec all(binary(), map()) -> {ok, [bunko_store:memory()]} | {error, term()}.
 all(NS, #{repo := Repo}) ->
     SQL =
@@ -177,6 +224,7 @@ install(#{repo := Repo}) ->
     run_all(Repo, [
         ~"CREATE EXTENSION IF NOT EXISTS vector",
         create_table_sql(Dim),
+        ~"ALTER TABLE bunko_memories ADD COLUMN IF NOT EXISTS last_accessed_at timestamptz",
         ~"CREATE INDEX IF NOT EXISTS bunko_memories_embedding_idx ON bunko_memories USING hnsw (embedding vector_cosine_ops)",
         ~"CREATE INDEX IF NOT EXISTS bunko_memories_content_fts_idx ON bunko_memories USING gin (to_tsvector('english', content))"
     ]).
@@ -192,7 +240,8 @@ create_table_sql(Dim) ->
         ~"id text PRIMARY KEY, namespace text NOT NULL, content text NOT NULL, ",
         ~"embedding vector(",
         Dim,
-        ~"), metadata jsonb, inserted_at timestamptz NOT NULL, updated_at timestamptz NOT NULL)"
+        ~"), metadata jsonb, inserted_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, ",
+        ~"last_accessed_at timestamptz)"
     ]).
 
 run_all(_Repo, []) ->
