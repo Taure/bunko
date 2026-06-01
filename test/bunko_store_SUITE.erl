@@ -1,6 +1,6 @@
 -module(bunko_store_SUITE).
 
--export([all/0, init_per_suite/1]).
+-export([all/0, init_per_suite/1, end_per_suite/1]).
 -export([
     install_is_idempotent/1,
     remember_and_recall/1,
@@ -36,6 +36,17 @@ init_per_suite(Config) ->
     catch
         Class:Reason -> {skip, {bunko_db_setup, Class, Reason}}
     end.
+
+end_per_suite(_Config) ->
+    %% Symmetric teardown: drop the schema we provisioned in init_per_suite so
+    %% the container's tmpfs is left clean between local runs. Guarded so a
+    %% teardown hiccup never masks a genuine test result.
+    try
+        bunko_store_pgvector:uninstall(#{repo => bunko_test_repo})
+    catch
+        _:_ -> ok
+    end,
+    ok.
 
 install_is_idempotent(_Config) ->
     %% init_per_suite already installed; a second call must not error.
