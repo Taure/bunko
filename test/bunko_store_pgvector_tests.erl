@@ -23,3 +23,28 @@ parse_vector_scientific_notation_test() ->
     ?assert(abs(V1 - -2.0e-6) < 1.0e-12),
     ?assert(abs(V2 - 1.5e-3) < 1.0e-12),
     ?assert(abs(V3 - 300.0) < 1.0e-9).
+
+filter_params_empty_test() ->
+    ?assertEqual([], bunko_store_pgvector:filter_params(#{})),
+    ?assertEqual([], bunko_store_pgvector:filter_params(#{filter => #{}})).
+
+filter_params_encodes_json_test() ->
+    [Json] = bunko_store_pgvector:filter_params(#{filter => #{<<"kind">> => <<"keep">>}}),
+    ?assertEqual(#{<<"kind">> => <<"keep">>}, json:decode(Json)).
+
+expire_clauses_empty_test() ->
+    ?assertEqual([], bunko_store_pgvector:expire_clauses(#{})),
+    ?assertEqual([], bunko_store_pgvector:expire_clauses(#{max_age_seconds => -1})).
+
+expire_clauses_age_test() ->
+    [Clause] = bunko_store_pgvector:expire_clauses(#{max_age_seconds => 3600}),
+    ?assertMatch({_, _}, binary:match(Clause, ~"inserted_at <")),
+    ?assertMatch({_, _}, binary:match(Clause, ~"3600.000")).
+
+expire_clauses_both_test() ->
+    Clauses = bunko_store_pgvector:expire_clauses(#{
+        max_age_seconds => 10, max_idle_seconds => 20
+    }),
+    ?assertEqual(2, length(Clauses)),
+    [_, Idle] = Clauses,
+    ?assertMatch({_, _}, binary:match(Idle, ~"coalesce(last_accessed_at, inserted_at)")).

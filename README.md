@@ -26,8 +26,43 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 %% Remember a fact.
 {ok, _Id} = bunko:remember(Ctx, ~"the user prefers metric units", #{source => chat}),
 
+%% Remember many in one batch embedding call (enable caching to skip
+%% re-embedding identical content).
+Cached = #{store => Store, embedder => {my_embedder, #{cache => true}}, namespace => ~"agent:42"},
+{ok, _Ids} = bunko:remember_many(Cached, [
+    {~"the user prefers metric units", #{source => chat}},
+    {~"the user is based in Stockholm", #{source => chat}}
+]),
+
 %% Recall the most relevant memories for a query (top-k cosine).
 {ok, Hits} = bunko:recall(Ctx, ~"what units should I use?", #{limit => 5}),
+
+%% Scope recall by metadata and reject semantically distant hits.
+{ok, Scoped} = bunko:recall(Ctx, ~"what units should I use?", #{
+    limit => 5,
+    filter => #{<<"source">> => <<"chat">>},
+    max_distance => 0.35
+}),
+
+%% Rerank by recency + importance + similarity (no model needed).
+{ok, Ranked} = bunko:recall(Ctx, ~"what units should I use?", #{
+    rerank => recency,
+    rerank_weights => #{alpha => 0.3, beta => 0.2, gamma => 0.5}
+}),
+
+%% Hybrid: fuse a keyword (tsvector) lane with the vector lane via RRF.
+{ok, Fused} = bunko:recall(Ctx, ~"metric units error E42", #{hybrid => true}),
+
+%% Plug in a custom reranker as an optional second stage.
+{ok, Reranked} = bunko:recall(Ctx, ~"what units?", #{
+    rerank => {my_reranker, #{}},
+    rerank_opts => #{}
+}),
+
+%% Forget: bound memory lifetime (age and/or idle). Drive this from your own
+%% scheduler. Mark recalled memories as accessed with touch => true.
+{ok, _Hits2} = bunko:recall(Ctx, ~"what units?", #{touch => true}),
+{ok, _Removed} = bunko:forget(Ctx, #{max_age_seconds => 2592000, max_idle_seconds => 604800}).
 
 %% Periodically compact: merge near-duplicate memories via a summarizer.
 {ok, _Stats} = bunko:consolidate(Ctx#{summarizer => {my_summarizer, #{}}}, #{threshold => 0.9}).
@@ -38,13 +73,15 @@ Ctx = #{store => Store, embedder => Embedder, namespace => ~"agent:42"},
 | Behaviour | Role |
 | --- | --- |
 | `bunko_store` | persist a memory + namespaced top-k similarity search |
-| `bunko_embedder` | text -> embedding vector |
+| `bunko_embedder` | text -> embedding vector (optional batch `embed_many`) |
 | `bunko_summarizer` | merge several memories into one (consolidation) |
+| `bunko_reranker` | optional second-stage reordering of recall hits |
 
-The shipped store is `bunko_store_pgvector` (kura + pgvector). Embedder and
-summarizer have deterministic stubs (`bunko_embedder_stub`,
-`bunko_summarizer_stub`); real ones are the caller's (wrap gakudan_llm, sekisho,
-or a vendor SDK).
+The shipped store is `bunko_store_pgvector` (kura + pgvector). Embedder,
+summarizer, and reranker have deterministic stubs (`bunko_embedder_stub`,
+`bunko_summarizer_stub`, `bunko_reranker_stub`); real ones are the caller's
+(wrap gakudan_llm, sekisho, or a vendor SDK). `bunko_reranker_score` is a
+built-in reranker over the recency/importance scorer.
 
 ## Schema setup
 
@@ -65,8 +102,11 @@ This creates the `vector` extension, the `bunko_memories` table, and the cosine
 v0.1. The embedding dimension is configured via `{bunko, [{embedding_dim, N}]}`
 (used by `install/1` and matched by the stub).
 
-Deferred: hybrid keyword+vector search, reranking, automatic extraction from
-transcripts, alternative stores.
+Recall supports metadata filtering, a distance threshold, recency/importance
+reranking, a pluggable reranker stage, and opt-in hybrid keyword+vector search
+(RRF). `forget/2` bounds memory lifetime by age and/or idle time. `remember_many/2`
+batches embedding, with an optional content-hash cache. Deferred: automatic
+extraction from transcripts, alternative stores.
 
 ## License
 

@@ -3,11 +3,15 @@
 Behaviour for memory stores: persist a memory and run namespaced similarity
 search. The shipped implementation is `bunko_store_pgvector`; the behaviour is
 the seam for others.
+
+`search/5` takes a `t:query/0` map of query-time options (a metadata containment
+filter, a distance threshold) on top of the store's static config `Opts`. This
+keeps store configuration (the repo) separate from per-call retrieval tuning.
 """.
 
--export([put/2, search/4, delete/2, all/2, resolve/1]).
+-export([put/2, search/5, delete/2, all/2, expire/3, touch/2, resolve/1]).
 
--export_type([ref/0, memory/0, hit/0]).
+-export_type([ref/0, memory/0, hit/0, query/0]).
 
 -type ref() :: module() | {module(), map()}.
 -type memory() :: #{
@@ -17,23 +21,44 @@ the seam for others.
     embedding := [float()],
     metadata => map() | undefined
 }.
--type hit() :: #{id := binary(), content := binary(), metadata := map(), distance := float()}.
+-type hit() :: #{
+    id := binary(),
+    content := binary(),
+    metadata := map(),
+    distance := float(),
+    age_seconds => float(),
+    score => float()
+}.
+-type query() :: #{
+    filter => map(),
+    max_distance => number(),
+    hybrid => boolean(),
+    text => binary(),
+    rrf_k => pos_integer(),
+    rrf_pool => pos_integer()
+}.
 
 -callback put(memory(), Opts :: map()) -> {ok, binary()} | {error, term()}.
--callback search(binary(), [float()], pos_integer(), Opts :: map()) ->
+-callback search(binary(), [float()], pos_integer(), query(), Opts :: map()) ->
     {ok, [hit()]} | {error, term()}.
 -callback delete([binary()], Opts :: map()) -> ok | {error, term()}.
 -callback all(binary(), Opts :: map()) -> {ok, [memory()]} | {error, term()}.
+-callback expire(binary(), Expiry :: map(), Opts :: map()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+-callback touch([binary()], Opts :: map()) -> ok | {error, term()}.
+
+-optional_callbacks([expire/3, touch/2]).
 
 -spec put(ref(), memory()) -> {ok, binary()} | {error, term()}.
 put(Ref, Memory) ->
     {Mod, Opts} = resolve(Ref),
     Mod:put(Memory, Opts).
 
--spec search(ref(), binary(), [float()], pos_integer()) -> {ok, [hit()]} | {error, term()}.
-search(Ref, Namespace, Vector, K) ->
+-spec search(ref(), binary(), [float()], pos_integer(), query()) ->
+    {ok, [hit()]} | {error, term()}.
+search(Ref, Namespace, Vector, K, Query) ->
     {Mod, Opts} = resolve(Ref),
-    Mod:search(Namespace, Vector, K, Opts).
+    Mod:search(Namespace, Vector, K, Query, Opts).
 
 -spec delete(ref(), [binary()]) -> ok | {error, term()}.
 delete(Ref, Ids) ->
@@ -44,6 +69,18 @@ delete(Ref, Ids) ->
 all(Ref, Namespace) ->
     {Mod, Opts} = resolve(Ref),
     Mod:all(Namespace, Opts).
+
+-spec expire(ref(), binary(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+expire(Ref, Namespace, Expiry) ->
+    {Mod, Opts} = resolve(Ref),
+    Mod:expire(Namespace, Expiry, Opts).
+
+-spec touch(ref(), [binary()]) -> ok | {error, term()}.
+touch(_Ref, []) ->
+    ok;
+touch(Ref, Ids) ->
+    {Mod, Opts} = resolve(Ref),
+    Mod:touch(Ids, Opts).
 
 -doc "Normalise a store reference to `{Module, Opts}`.".
 -spec resolve(ref()) -> {module(), map()}.

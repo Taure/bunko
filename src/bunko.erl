@@ -18,7 +18,7 @@ Ctx = #{
 cosine); `consolidate` merges near-duplicate memories via the summarizer.
 """.
 
--export([remember/3, recall/3, consolidate/2]).
+-export([remember/3, remember_many/2, recall/3, consolidate/2, forget/2]).
 
 -export_type([context/0]).
 
@@ -46,14 +46,106 @@ remember(Ctx, Content, Metadata) ->
             Err
     end.
 
--doc "Recall the most relevant memories for `Query` (option `limit`, default 5).".
+-doc """
+Embed and store several memories in one batch embedding call.
+
+`Items` is a list of `{Content, Metadata}`. Uses the embedder's `embed_many/2`
+(falling back to per-item `embed/2`), so a batch is a single embedding request,
+and the content-hash cache (`cache => true` on the embedder ref) skips identical
+content. Returns the new ids in input order. Stores are still per-item and
+best-effort: a store error aborts and returns it, leaving earlier items written.
+""".
+-spec remember_many(context(), [{binary(), map()}]) ->
+    {ok, [binary()]} | {error, term()}.
+remember_many(Ctx, Items) ->
+    Contents = [C || {C, _M} <- Items],
+    case bunko_embedder:embed_many(embedder(Ctx), Contents) of
+        {ok, Vectors} ->
+            store_many(Ctx, lists:zip(Items, Vectors), []);
+        {error, _} = Err ->
+            Err
+    end.
+
+store_many(_Ctx, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+store_many(Ctx, [{{Content, Metadata}, Vector} | Rest], Acc) ->
+    Memory = #{
+        id => new_id(),
+        namespace => namespace(Ctx),
+        content => Content,
+        embedding => Vector,
+        metadata => Metadata
+    },
+    case bunko_store:put(store(Ctx), Memory) of
+        {ok, Id} -> store_many(Ctx, Rest, [Id | Acc]);
+        {error, _} = Err -> Err
+    end.
+
+-doc """
+Recall the most relevant memories for `Query`.
+
+Options (all optional):
+
+- `limit` - max hits to return (default 5).
+- `filter` - a metadata map; only memories whose `metadata` jsonb contains it
+  (SQL `@>`) are considered.
+- `max_distance` - drop hits whose cosine distance exceeds this threshold.
+- `hybrid => true` - fuse a keyword (tsvector) lane with the cosine lane via
+  Reciprocal Rank Fusion (see `m:bunko_store_pgvector`); tune with `rrf_k` /
+  `rrf_pool`.
+- `rerank` - an optional second reranking stage. `recency` is the built-in
+  recency + importance + similarity scorer (`m:bunko_reranker_score`); any
+  `m:bunko_reranker` reference (`Module` or `{Module, Opts}`) plugs in a custom
+  reranker. Per-call reranker options go under `rerank_opts` (the legacy
+  `rerank_weights` is still honoured for the recency scorer).
+- `touch => true` - stamp the returned hits' `last_accessed_at`, so idle-based
+  forgetting (`forget/2`) treats recalled memories as recently used.
+""".
 -spec recall(context(), binary(), map()) -> {ok, [bunko_store:hit()]} | {error, term()}.
 recall(Ctx, Query, Opts) ->
     case bunko_embedder:embed(embedder(Ctx), Query) of
         {ok, Vector} ->
-            bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts));
+            QueryOpts = query_opts(Query, Opts),
+            case bunko_store:search(store(Ctx), namespace(Ctx), Vector, limit(Opts), QueryOpts) of
+                {ok, Hits} ->
+                    Ranked = maybe_rerank(Opts, Query, Hits),
+                    _ = maybe_touch(Ctx, Opts, Ranked),
+                    {ok, Ranked};
+                {error, _} = Err ->
+                    Err
+            end;
         {error, _} = Err ->
             Err
+    end.
+
+query_opts(Query, Opts) ->
+    Base = maps:with([filter, max_distance, rrf_k, rrf_pool], Opts),
+    case maps:get(hybrid, Opts, false) of
+        true -> Base#{hybrid => true, text => Query};
+        _ -> Base
+    end.
+
+maybe_rerank(Opts, Query, Hits) ->
+    case maps:get(rerank, Opts, undefined) of
+        undefined ->
+            Hits;
+        Spec ->
+            {Ref, RerankOpts} = reranker(Spec, Opts),
+            case bunko_reranker:rerank(Ref, Query, Hits, RerankOpts) of
+                {ok, Reranked} -> Reranked;
+                {error, _} -> Hits
+            end
+    end.
+
+reranker(recency, Opts) ->
+    {bunko_reranker_score, maps:get(rerank_opts, Opts, maps:get(rerank_weights, Opts, #{}))};
+reranker(Ref, Opts) ->
+    {Ref, maps:get(rerank_opts, Opts, #{})}.
+
+maybe_touch(Ctx, Opts, Hits) ->
+    case maps:get(touch, Opts, false) of
+        true -> _ = bunko_store:touch(store(Ctx), [maps:get(id, H) || H <- Hits]);
+        _ -> ok
     end.
 
 limit(Opts) ->
@@ -82,6 +174,22 @@ consolidate(Ctx, Opts) ->
         {error, _} = Err ->
             Err
     end.
+
+-doc """
+Forget (delete) memories in the namespace that have expired. `Expiry` is a map:
+
+- `max_age_seconds` - delete memories older than this (by `inserted_at`).
+- `max_idle_seconds` - delete memories not accessed within this window (by
+  `last_accessed_at`, falling back to `inserted_at` when never touched; see the
+  `touch` option of `recall/3`).
+
+Either, both, or neither may be set (neither deletes nothing). Returns the count
+removed. Besides bounding unbounded growth, age-based expiry is a safety control:
+it caps how long a poisoned or stale memory can survive.
+""".
+-spec forget(context(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+forget(Ctx, Expiry) ->
+    bunko_store:expire(store(Ctx), namespace(Ctx), Expiry).
 
 %% --- consolidation ---
 

@@ -6,6 +6,14 @@
     remember_and_recall/1,
     recall_respects_limit/1,
     recall_clamps_bad_limit/1,
+    recall_filters_by_metadata/1,
+    recall_drops_past_max_distance/1,
+    recall_reranks_by_recency/1,
+    recall_hybrid_finds_keyword_match/1,
+    recall_applies_reranker/1,
+    forget_expires_by_age/1,
+    forget_respects_idle_and_touch/1,
+    remember_many_batches/1,
     consolidate_merges_similar/1
 ]).
 
@@ -18,6 +26,14 @@ all() ->
         remember_and_recall,
         recall_respects_limit,
         recall_clamps_bad_limit,
+        recall_filters_by_metadata,
+        recall_drops_past_max_distance,
+        recall_reranks_by_recency,
+        recall_hybrid_finds_keyword_match,
+        recall_applies_reranker,
+        forget_expires_by_age,
+        forget_respects_idle_and_touch,
+        remember_many_batches,
         consolidate_merges_similar
     ].
 
@@ -74,6 +90,88 @@ recall_clamps_bad_limit(_Config) ->
     {ok, Bad} = bunko:recall(Ctx, ~"3", #{limit => not_an_int}),
     ?assertEqual(5, length(Zero)),
     ?assertEqual(5, length(Bad)).
+
+recall_filters_by_metadata(_Config) ->
+    Ctx = ctx(~"ns-filter"),
+    {ok, _} = bunko:remember(Ctx, ~"kept fact", #{<<"kind">> => <<"keep">>}),
+    {ok, _} = bunko:remember(Ctx, ~"other fact", #{<<"kind">> => <<"skip">>}),
+    {ok, Hits} = bunko:recall(Ctx, ~"fact", #{filter => #{<<"kind">> => <<"keep">>}}),
+    ?assertEqual(1, length(Hits)),
+    [Hit] = Hits,
+    ?assertEqual(~"kept fact", maps:get(content, Hit)).
+
+recall_drops_past_max_distance(_Config) ->
+    Ctx = ctx(~"ns-maxdist"),
+    {ok, _} = bunko:remember(Ctx, ~"the only memory here", #{}),
+    {ok, Exact} = bunko:recall(Ctx, ~"the only memory here", #{max_distance => 0.0001}),
+    {ok, NoneNear} = bunko:recall(Ctx, ~"totally unrelated query string", #{max_distance => 0.0001}),
+    ?assertEqual(1, length(Exact)),
+    ?assertEqual(0, length(NoneNear)).
+
+recall_reranks_by_recency(_Config) ->
+    Ctx = ctx(~"ns-rerank"),
+    {ok, _} = bunko:remember(Ctx, ~"low priority note", #{~"importance" => 0.0}),
+    {ok, _} = bunko:remember(Ctx, ~"high priority note", #{~"importance" => 1.0}),
+    Weights = #{alpha => 0.0, beta => 1.0, gamma => 0.0},
+    {ok, Hits} = bunko:recall(Ctx, ~"note", #{rerank => recency, rerank_weights => Weights}),
+    [Top | _] = Hits,
+    ?assertEqual(~"high priority note", maps:get(content, Top)),
+    ?assert(maps:is_key(score, Top)).
+
+recall_hybrid_finds_keyword_match(_Config) ->
+    Ctx = ctx(~"ns-hybrid"),
+    {ok, _} = bunko:remember(Ctx, ~"the quick brown fox jumps", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"lorem ipsum dolor sit amet", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"completely different content here", #{}),
+    {ok, Hits} = bunko:recall(Ctx, ~"brown fox", #{hybrid => true, limit => 3}),
+    Contents = [maps:get(content, H) || H <- Hits],
+    ?assert(lists:member(~"the quick brown fox jumps", Contents)),
+    [Top | _] = Hits,
+    ?assertEqual(~"the quick brown fox jumps", maps:get(content, Top)).
+
+recall_applies_reranker(_Config) ->
+    Ctx = ctx(~"ns-reranker"),
+    {ok, _} = bunko:remember(Ctx, ~"alpha beta gamma", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"unrelated text", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"delta epsilon", #{}),
+    {ok, Hits} = bunko:recall(Ctx, ~"alpha beta", #{limit => 3, rerank => bunko_reranker_stub}),
+    [Top | _] = Hits,
+    ?assertEqual(~"alpha beta gamma", maps:get(content, Top)).
+
+forget_expires_by_age(_Config) ->
+    Ctx = ctx(~"ns-forget-age"),
+    {ok, _} = bunko:remember(Ctx, ~"ephemeral one", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"ephemeral two", #{}),
+    {ok, KeptNone} = bunko:forget(Ctx, #{max_age_seconds => 86400}),
+    ?assertEqual(0, KeptNone),
+    {ok, Removed} = bunko:forget(Ctx, #{max_age_seconds => 0}),
+    ?assertEqual(2, Removed),
+    {ok, All} = bunko_store:all(store(), ~"ns-forget-age"),
+    ?assertEqual(0, length(All)).
+
+forget_respects_idle_and_touch(_Config) ->
+    Ctx = ctx(~"ns-forget-idle"),
+    {ok, _} = bunko:remember(Ctx, ~"stale memory text", #{}),
+    {ok, _} = bunko:remember(Ctx, ~"fresh memory text", #{}),
+    timer:sleep(1100),
+    {ok, _} = bunko:recall(Ctx, ~"fresh memory text", #{limit => 1, touch => true}),
+    {ok, Removed} = bunko:forget(Ctx, #{max_idle_seconds => 1}),
+    ?assertEqual(1, Removed),
+    {ok, All} = bunko_store:all(store(), ~"ns-forget-idle"),
+    ?assertEqual(1, length(All)),
+    [Survivor] = All,
+    ?assertEqual(~"fresh memory text", maps:get(content, Survivor)).
+
+remember_many_batches(_Config) ->
+    Ctx = ctx(~"ns-batch"),
+    Items = [{~"first fact", #{}}, {~"second fact", #{}}, {~"third fact", #{}}],
+    {ok, Ids} = bunko:remember_many(Ctx, Items),
+    ?assertEqual(3, length(Ids)),
+    {ok, All} = bunko_store:all(store(), ~"ns-batch"),
+    ?assertEqual(3, length(All)),
+    {ok, Hits} = bunko:recall(Ctx, ~"second fact", #{limit => 1}),
+    [Top | _] = Hits,
+    ?assertEqual(~"second fact", maps:get(content, Top)).
 
 consolidate_merges_similar(_Config) ->
     Ctx = ctx(~"ns-consolidate"),

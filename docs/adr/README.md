@@ -18,3 +18,9 @@ a merged ADR - supersede it.
 | ADR | Title |
 | --- | --- |
 | [0001](0001-memory-model.md) | Memory model |
+| [0002](0002-query-time-retrieval-options.md) | Query-time retrieval options |
+| [0003](0003-recency-importance-scoring.md) | Recency and importance scoring |
+| [0004](0004-hybrid-search-rrf.md) | Hybrid keyword + vector search |
+| [0005](0005-reranker-seam.md) | Reranker seam |
+| [0006](0006-forgetting-decay-ttl.md) | Forgetting: TTL and idle expiry |
+| [0007](0007-batch-and-cached-embedding.md) | Batch and cached embedding |
